@@ -17,7 +17,6 @@ class PushUI(PushInterface):
         super().__init__(server)
         self.pushed = {}
         self.sampler = Sampler(steps=8, no_samples=8, callback=self.step)
-        self.state = [[False] * 8 for _ in range(8)]
 
     def step(self):
         """increase time-step by one"""
@@ -33,18 +32,13 @@ class PushUI(PushInterface):
         if step == self.sampler.pos:
             self.set_pad_color(row, step, COLOR_RUNNING)
         else:
-            if self.state[row][step]:
+            if self.sampler.is_on(row, step):
                 self.set_pad_color(row, step, COLOR_ON)
             else:
                 self.set_pad_color(row, step, COLOR_OFF)
 
     def pad_down(self, row: int, step: int):
-        if self.state[row][step]:
-            self.sampler.deactive(row, step)
-            self.state[row][step] = False
-        else:
-            self.sampler.activate(row, step)
-            self.state[row][step] = True
+        self.sampler.toggle(row, step)
         self.draw(row, step)
 
 

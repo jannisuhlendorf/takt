@@ -1,7 +1,112 @@
+from functools import partial
 import os
+from typing import Callable
 import pyo
 
 from takt.exceptions import NotFoundException
+
+
+class Beat:
+    """
+    implements a simple beat that can trigger a number of callback functions
+    at certain beat positions. In addition it is possible to change the timing
+    of single beat steps.
+    """
+
+    def __init__(self, no_patterns: int, steps: int, bpm: float):
+        """
+        :param no_patterns: number of patterns (number of samples to trigger)
+        :param steps: number of steps
+        :param bpm: beats per minute
+        """
+        self.time_per_step = 1. / bpm * 60 / 4
+        self.duration = steps * self.time_per_step
+        self.offsets = [[0.] * steps for _ in range(no_patterns + 1)]
+        self.pattern = [[False] * steps for _ in range(no_patterns + 1)]
+        self.pattern_tables = [
+            pyo.NewTable(self.duration) for _ in range(no_patterns + 1)
+        ]
+        self.trigger_tables = [
+            pyo.TableRead(table, freq=1./self.duration, interp=1, loop=1)
+            for table in self.pattern_tables
+        ]
+        self.trigger_functions = [
+            pyo.TrigFunc(trigger, lambda: None)
+            for trigger in self.trigger_tables
+        ]
+        self.sampling_rate = self.trigger_tables[0].getSamplingRate()
+
+        # the last pattern is always on to implement a callback at each step
+        for step in range(steps):
+            self.activate(no_patterns, step)
+
+    def register_callback(self, pattern: int, func: Callable):
+        """
+        register a callback function that is called each time the corresponding
+        pattern is triggered
+        """
+        self.trigger_functions[pattern].setFunction(func)
+
+    def register_step_callback(self, func: Callable):
+        """
+        register a callback function that is called each step
+        """
+        pos_all_on_pattern = len(self.pattern_tables) - 1
+        self.register_callback(pos_all_on_pattern, func)
+
+    def play(self):
+        """
+        start the beat
+        """
+        [t.play() for t in self.trigger_tables]
+
+    def stop(self):
+        """
+        stop the beat
+        """
+        [t.stop() for t in self.trigger_tables]
+
+    def toggle(self, pattern: int, step: int):
+        """
+        toggle a pattern step
+        (switch in on if it was off before and vice versa)
+        """
+        if not self.is_on(pattern, step):
+            self.activate(pattern, step)
+        else:
+            self.deactivate(pattern, step)
+
+    def activate(self, pattern: int, step: int):
+        """
+        activate the trigger of a pattern at a certain step
+        """
+        beat_time = (self.time_per_step * step) + self.offsets[pattern][step]
+        index = int(self.sampling_rate * beat_time)
+        self.pattern_tables[pattern].put(1., pos=index)
+        self.pattern[pattern][step] = True
+
+    def deactivate(self, pattern, step):
+        """
+        deactivate the trigger of a pattern at a certain step
+        """
+        beat_time = (self.time_per_step * step) + self.offsets[pattern][step]
+        index = int(self.sampling_rate * beat_time)
+        self.pattern_tables[pattern].put(0., pos=index)
+        self.pattern[pattern][step] = False
+
+    def change_timing(self, pattern: int, step: int, by: float):
+        """
+        change the precise timing of a certain step in miliseconds
+        """
+        self.deactivate(pattern, step)
+        self.offsets[pattern][step] += by / 1000
+        self.activate(pattern, step)
+
+    def is_on(self, pattern: int, step: int) -> bool:
+        """
+        get the state of a pattern position (on or off)
+        """
+        return self.pattern[pattern][step]
 
 
 class Sampler:
@@ -21,49 +126,16 @@ class Sampler:
         self.samples = [None] * no_samples
         self.callback = callback
         self.pos = 0
-        self.patterns = []
-        self.trigs = []
         self.velocity = self._create_parameter_matrix()
         self.speed = self._create_parameter_matrix()
-        self._initialize_patterns()
-
-        w1 = [100] * (no_samples + 1)
-        time = 1. / bpm * 60 / 4
-        self.beat = pyo.Beat(time=time, taps=self.steps, w1=w1, poly=1)
-        self._update_pattern()
-
-    def _initialize_patterns(self):
-        """
-        create empty beat pattern and the full pattern that is used to trigger
-        the callback function at each step
-        """
-        def empty_pattern(value):
-            return [[self.steps] + ([value] * self.steps)]
-
-        for _ in self.samples:
-            pattern = empty_pattern(0)
-            self.patterns.append(pattern)
-
-        all_on_pattern = empty_pattern(1)
-        self.patterns.append(all_on_pattern)
+        self.beat = Beat(no_patterns=no_samples, steps=steps, bpm=bpm)
+        self.beat.register_step_callback(self._step)
+        for pos in range(no_samples):
+            func = partial(self.trigger, sample_pos=pos)
+            self.beat.register_callback(pos, func)
 
     def _create_parameter_matrix(self, value=1.):
         return [[value] * self.steps for _ in self.samples]
-
-    def _update_pattern(self):
-        patterns = self.patterns
-        self.beat.setPresets(patterns)
-        self.beat.recall(0)
-
-    def _update_trigs(self):
-        self.trigs = []
-        for pos, sample in enumerate(self.samples):
-            if not sample:
-                continue
-            trig = pyo.TrigFunc(self.beat[pos], self.trigger, pos)
-            self.trigs.append(trig)
-        stepper = pyo.TrigFunc(self.beat[-1], self._step)
-        self.trigs.append(stepper)
 
     def load_sample(self, path: str, sample_pos: int):
         """
@@ -73,9 +145,7 @@ class Sampler:
         """
         if not os.path.isfile(path):
             raise NotFoundException(f'Sample {path} not found.')
-        player = pyo.SfPlayer(path, speed=1, loop=False)
-        self.samples[sample_pos] = player
-        self._update_trigs()
+        self.samples[sample_pos] = pyo.SfPlayer(path, speed=1, loop=False)
 
     def start(self):
         """
@@ -103,27 +173,23 @@ class Sampler:
         :param sample_pos: position of sample
         """
         sample = self.samples[sample_pos]
-        sample.setMul(self.velocity[sample_pos][self.pos])
-        sample.setSpeed(self.speed[sample_pos][self.pos])
-        sample.out()
+        if sample is not None:
+            sample.setMul(self.velocity[sample_pos][self.pos])
+            sample.setSpeed(self.speed[sample_pos][self.pos])
+            sample.out()
 
-    def activate(self, sample_pos: int, step: int):
+    def toggle(self, sample_pos: int, step: int):
         """
-        set a sample to trigger at a certain position
-        :param sample_pos: sample position
-        :param step: position in beat
+        toggle a pattern step
+        (switch in on if it was off before and vice versa)
         """
-        self.patterns[sample_pos][0][step + 1] = 1
-        self._update_pattern()
+        self.beat.toggle(sample_pos, step)
 
-    def deactive(self, sample_pos: int, step: int):
+    def is_on(self, sample_pos: int, step: int) -> bool:
         """
-        deactivate trigger of a sample at a certain position
-        :param sample_pos: sample position
-        :param step: position in beat
+        get the state of a pattern position (on or off)
         """
-        self.patterns[sample_pos][0][step + 1] = 0
-        self._update_pattern()
+        return self.beat.is_on(sample_pos, step)
 
     def change_velocity(self, sample_pos: int, step: int, by: float):
         """
