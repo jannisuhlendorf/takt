@@ -28,6 +28,13 @@ class PushUI(PushInterface):
             self.draw(i, previous_pos)
             self.draw(i, pos)
 
+        for pos in range(4):
+            self.clear_display_line(pos)
+        self.write_display_text(0, 0, 'velocity')
+        self.write_display_text(0, 11, 'speed')
+        self.write_display_text(0, 18, 'timing')
+
+
     def draw(self, row, step):
         if step == self.sampler.pos:
             self.set_pad_color(row, step, COLOR_RUNNING)

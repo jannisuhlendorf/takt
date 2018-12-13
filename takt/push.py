@@ -79,4 +79,23 @@ class PushInterface(MidiReceiver):
         note = convert_pad_position_to_midi(row, step)
         self.server.noteout(note, value)
 
+    def clear_display_line(self, line: int):
+        """
+        clear a line on the display
+        """
+        data = bytes([240, 71, 127, 21, 28 + line, 0, 0, 247])
+        self.server.sysexout(data)
+
+    def write_display_text(self, line: int, offset: int, text: str):
+        """
+        write a text to the push display
+        :param line: line number (0-3)
+        :param offset:
+        :param text: text to write
+        """
+        data = bytes(
+            [240, 71, 127, 21, 24 + line, 0, len(text) + 1, offset] + [ord(x) for x in text] + [247]
+        )
+        self.server.sysexout(data)
+
 
