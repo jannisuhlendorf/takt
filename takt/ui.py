@@ -15,7 +15,7 @@ class PushUI(PushInterface):
 
     def __init__(self, server):
         super().__init__(server)
-        self.pushed = {}
+        self.parameter_modified = {}
         self.sampler = Sampler(steps=8, no_samples=8, callback=self.step)
 
     def step(self):
@@ -38,8 +38,24 @@ class PushUI(PushInterface):
                 self.set_pad_color(row, step, COLOR_OFF)
 
     def pad_down(self, row: int, step: int):
-        self.sampler.toggle(row, step)
-        self.draw(row, step)
+        self.parameter_modified[(row, step)] = False
+
+    def pad_release(self, row: int, step: int):
+        if not self.parameter_modified[(row, step)]:
+            self.sampler.toggle(row, step)
+            self.draw(row, step)
+        del self.parameter_modified[(row, step)]
+
+    def dial_change(self, dial_id: int, value: float):
+        change = value / 30
+        for row, step in self.parameter_modified:
+            if dial_id == 71:
+                self.sampler.change_velocity(row, step, by=change)
+            elif dial_id == 72:
+                self.sampler.change_speed(row, step, by=change)
+            elif dial_id == 73:
+                self.sampler.change_timing(row, step, by=change*100)
+            self.parameter_modified[(row, step)] = True
 
 
 def main():

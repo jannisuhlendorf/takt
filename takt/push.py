@@ -35,6 +35,13 @@ class PushInterface(MidiReceiver):
             row, step = convert_midi_to_pad_position(note)
             self.pad_release(row, step)
 
+    def control_change(self, data1: int, data2: int):
+        if data2 < 64:
+            change = data2
+        else:
+            change = data2 - 128
+        self.dial_change(data1, change)
+
     def pad_down(self, row: int, step: int):
         """
         called when a pad is pushed down
@@ -54,18 +61,6 @@ class PushInterface(MidiReceiver):
         called for rotary knob changes
         :param dial_id: number of dial changed
         :param value: value change
-        """
-
-    def dial_down(self, dial_id: int):
-        """
-        called when a dial is pushed down
-        :param dial_id: number of dial
-        """
-
-    def dial_release(self, dial_id: int):
-        """
-        called when a dial is pushed down
-        :param dial_id: number of dial
         """
 
     def button_down(self, button_id: int):

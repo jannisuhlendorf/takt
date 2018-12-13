@@ -66,15 +66,17 @@ class Beat:
         """
         [t.stop() for t in self.trigger_tables]
 
-    def toggle(self, pattern: int, step: int):
+    def toggle(self, pattern: int, step: int) -> bool:
         """
         toggle a pattern step
         (switch in on if it was off before and vice versa)
         """
         if not self.is_on(pattern, step):
             self.activate(pattern, step)
+            return True
         else:
             self.deactivate(pattern, step)
+            return False
 
     def activate(self, pattern: int, step: int):
         """
@@ -101,6 +103,7 @@ class Beat:
         self.deactivate(pattern, step)
         self.offsets[pattern][step] += by / 1000
         self.activate(pattern, step)
+        return self.offsets[pattern][step]
 
     def is_on(self, pattern: int, step: int) -> bool:
         """
@@ -178,12 +181,12 @@ class Sampler:
             sample.setSpeed(self.speed[sample_pos][self.pos])
             sample.out()
 
-    def toggle(self, sample_pos: int, step: int):
+    def toggle(self, sample_pos: int, step: int) -> bool:
         """
         toggle a pattern step
         (switch in on if it was off before and vice versa)
         """
-        self.beat.toggle(sample_pos, step)
+        return self.beat.toggle(sample_pos, step)
 
     def is_on(self, sample_pos: int, step: int) -> bool:
         """
@@ -191,7 +194,7 @@ class Sampler:
         """
         return self.beat.is_on(sample_pos, step)
 
-    def change_velocity(self, sample_pos: int, step: int, by: float):
+    def change_velocity(self, sample_pos: int, step: int, by: float) -> float:
         """
         alter the velocity of a sample at a specific step
         :param sample_pos: sample position
@@ -202,7 +205,7 @@ class Sampler:
         self.velocity[sample_pos][step] += by
         return self.velocity[sample_pos][step]
 
-    def change_speed(self, sample_pos: int, step: int, by: float):
+    def change_speed(self, sample_pos: int, step: int, by: float) -> float:
         """
         alter the playback speed of a sample at a specific step
         :param sample_pos: sample position
@@ -213,7 +216,17 @@ class Sampler:
         self.speed[sample_pos][step] += by
         return self.speed[sample_pos][step]
 
-    def change_parameter(self, parameter: str, sample_pos: int, step: int, by: float):
+    def change_timing(self, sample_pos: int, step: int, by: float) -> float:
+        """
+        alter the timing a sample at a specific step
+        :param sample_pos: sample position
+        :param step: position in beat
+        :param by: float to alter timing by (in ms)
+        :return: new timing offset
+        """
+        return self.beat.change_timing(sample_pos, step, by)
+
+    def change_parameter(self, parameter: str, sample_pos: int, step: int, by: float) -> float:
         """
         change the value of a parameter for a sample at a certain beat position
         :param parameter: parameter name
@@ -226,7 +239,7 @@ class Sampler:
         matrix[sample_pos][step] += by
         return matrix[sample_pos][step]
 
-    def get_parameter_value(self, parameter: str, sample_pos: int, step: int):
+    def get_parameter_value(self, parameter: str, sample_pos: int, step: int) -> float:
         """
         get the value of a parameter for a sample at a certain beat position
         :param parameter: parameter name
