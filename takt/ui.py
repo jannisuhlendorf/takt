@@ -1,6 +1,7 @@
 import argparse
 import time
 import pyo
+import sys
 
 from takt.push import PushInterface
 from takt.sampler import Sampler
@@ -33,7 +34,6 @@ class PushUI(PushInterface):
         self.write_display_text(0, 0, 'velocity')
         self.write_display_text(0, 11, 'speed')
         self.write_display_text(0, 18, 'timing')
-
 
     def draw(self, row, step):
         if step == self.sampler.pos:
@@ -69,18 +69,33 @@ def main():
     parser = argparse.ArgumentParser(description="runs a sampler that can be controlled with push 1.")
     parser.add_argument('--midi_in', default=0, type=int, help='MIDI IN port of push interface')
     parser.add_argument('--midi_out', default=2, type=int, help='MIDI OUT port of push interface')
+    parser.add_argument('--list_devices', action='store_true')
+    parser.add_argument('--audio_out_device', default=0, type=int, help='audio output device (start with option '
+                                                                     '--list_devices too see available devices)')
 
     args = parser.parse_args()
 
+    if args.list_devices:
+        pyo.pa_list_devices()
+        pyo.pm_list_devices()
+        sys.exit()
+
     server = pyo.Server()
-    server.boot()
-    server.start()
+    server.setOutputDevice(args.audio_out_device)
     server.setMidiInputDevice(args.midi_in)
     server.setMidiOutputDevice(args.midi_out)
+    server.boot()
+    server.start()
     push = PushInterface(server)
     ui = PushUI(server)
-    ui.sampler.load_sample('samples/waot_kick_01.wav', 0)
-    ui.sampler.load_sample('samples/waot_snare_01.wav', 1)
+    ui.sampler.load_sample('samples/BD-short.wav', 0)
+    ui.sampler.load_sample('samples/SD-short.wav', 1)
+    ui.sampler.load_sample('samples/LT-short.wav', 2)
+    ui.sampler.load_sample('samples/MT-short.wav', 3)
+    ui.sampler.load_sample('samples/HT-short.wav', 4)
+    ui.sampler.load_sample('samples/RS-short.wav', 5)
+    ui.sampler.load_sample('samples/CH-short.wav', 6)
+    ui.sampler.load_sample('samples/OH-short.wav', 7)
     ui.sampler.start()
     while 1:
         time.sleep(1)
